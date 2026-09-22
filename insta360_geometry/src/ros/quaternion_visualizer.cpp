@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -81,6 +82,12 @@ private:
     double w = 0.0, x = 0.0, y = 0.0, z = 0.0;
     if (!(stream >> w >> x >> y >> z)) {
       RCLCPP_WARN(get_logger(), "Malformed command: '%s'", msg->data.c_str());
+      return;
+    }
+    const double norm_sq = w * w + x * x + y * y + z * z;
+    if (norm_sq == 0.0 || !std::isfinite(norm_sq)) {
+      RCLCPP_WARN(
+        get_logger(), "Zero or non-finite quaternion: '%s'", msg->data.c_str());
       return;
     }
     Eigen::Quaterniond q(w, x, y, z);
