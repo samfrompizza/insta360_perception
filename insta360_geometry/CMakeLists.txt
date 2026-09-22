@@ -37,6 +37,24 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(image_transport REQUIRED)
+find_package(cv_bridge REQUIRED)
+
+add_executable(quaternion_visualizer src/ros/quaternion_visualizer.cpp)
+target_link_libraries(quaternion_visualizer
+  insta360_geometry_core
+  ${rclcpp_TARGETS}
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+  ${cv_bridge_TARGETS}
+)
+install(TARGETS quaternion_visualizer
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_lens_params test/test_lens_params.cpp)
