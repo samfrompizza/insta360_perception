@@ -55,6 +55,15 @@ install(TARGETS quaternion_visualizer
   DESTINATION lib/${PROJECT_NAME}
 )
 
+add_executable(marker_cli src/cli/marker_cli.cpp)
+target_link_libraries(marker_cli
+  ${rclcpp_TARGETS}
+  ${std_msgs_TARGETS}
+)
+install(TARGETS marker_cli
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_lens_params test/test_lens_params.cpp)
