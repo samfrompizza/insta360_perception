@@ -1,5 +1,6 @@
 #include "insta360_geometry/equidistant_model.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace insta360_geometry
@@ -31,9 +32,25 @@ std::optional<Eigen::Vector3d> EquidistantModel::pixelToRay(
 }
 
 std::optional<cv::Point2d> EquidistantModel::rayToPixel(
-  const Eigen::Vector3d &, const LensParams &) const
+  const Eigen::Vector3d & ray, const LensParams & params) const
 {
-  return std::nullopt;  // implemented in Task 4
+  const double norm = ray.norm();
+  if (norm == 0.0) {
+    return std::nullopt;
+  }
+  const Eigen::Vector3d unit = ray / norm;
+
+  const double z = std::clamp(unit.z(), -1.0, 1.0);
+  const double theta = std::acos(z);
+  if (theta > M_PI / 2.0) {
+    return std::nullopt;
+  }
+
+  const double r = params.fx * theta;
+  const double phi = std::atan2(unit.y(), unit.x());
+  return cv::Point2d(
+    params.cx + r * std::cos(phi),
+    params.cy + r * std::sin(phi));
 }
 
 }  // namespace insta360_geometry
