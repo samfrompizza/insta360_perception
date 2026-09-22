@@ -43,6 +43,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_lens_params insta360_geometry_core)
   ament_add_gtest(test_fisheye_model test/test_fisheye_model.cpp)
   target_link_libraries(test_fisheye_model insta360_geometry_core)
+  ament_add_gtest(test_equidistant_model test/test_equidistant_model.cpp)
+  target_link_libraries(test_equidistant_model insta360_geometry_core)
 endif()
 
 ament_export_include_directories(include)
