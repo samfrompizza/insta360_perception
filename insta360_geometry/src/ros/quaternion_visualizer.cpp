@@ -38,6 +38,7 @@ public:
   {
     const int frame_width = declare_parameter("frame_width", 1920);
     const int roi_size = declare_parameter("roi_size", 32);
+    const bool full_frame = declare_parameter("full_frame", false);
 
     insta360_geometry::LensParams front{
       declare_parameter("front_fx", 480.0),
@@ -55,6 +56,7 @@ public:
       std::make_unique<insta360_geometry::EquidistantModel>());
 
     roi_size_ = roi_size;
+    full_frame_ = full_frame;
 
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
       "/dual_fisheye/image", rclcpp::SensorDataQoS(),
@@ -120,6 +122,20 @@ private:
       return;
     }
 
+    if (full_frame_) {
+      for (const auto & q : markers_) {
+        auto pixel = camera_->quaternionToPixel(q);
+        if (!pixel.has_value()) {
+          continue;
+        }
+        drawMarker(cv_ptr->image, *pixel);
+      }
+      auto out = cv_bridge::CvImage(
+        msg->header, sensor_msgs::image_encodings::BGR8, cv_ptr->image).toImageMsg();
+      image_pub_->publish(*out);
+      return;
+    }
+
     for (const auto & q : markers_) {
       auto pixel = camera_->quaternionToPixel(q);
       if (!pixel.has_value()) {
@@ -127,6 +143,18 @@ private:
       }
       publishRoi(cv_ptr->image, *pixel, msg->header);
     }
+  }
+
+  // Draws the 5x5 red marker rectangle onto a full frame, clamped to its bounds.
+  void drawMarker(cv::Mat & frame, const cv::Point2d & pixel)
+  {
+    const int u = static_cast<int>(std::lround(pixel.x));
+    const int v = static_cast<int>(std::lround(pixel.y));
+    const int x = std::clamp(u - 2, 0, std::max(0, frame.cols - 5));
+    const int y = std::clamp(v - 2, 0, std::max(0, frame.rows - 5));
+    const int w = std::min(5, frame.cols - x);
+    const int h = std::min(5, frame.rows - y);
+    cv::rectangle(frame, cv::Rect(x, y, w, h), cv::Scalar(0, 0, 255), 1);
   }
 
   void publishRoi(
@@ -161,6 +189,7 @@ private:
 
   std::unique_ptr<insta360_geometry::FisheyeCamera> camera_;
   int roi_size_{32};
+  bool full_frame_{false};
   std::vector<Eigen::Quaterniond> markers_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;

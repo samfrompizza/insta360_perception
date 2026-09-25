@@ -27,7 +27,9 @@ CV-детекция объекта → кватернион, стыковка с
     `FisheyeCamera`.
 - **ROS-узел** `quaternion_visualizer` — тонкая потоковая обёртка. Подписывается
   на `/dual_fisheye/image` и `~/marker_command` (`std_msgs/String`), публикует
-  `~/visualization` (`sensor_msgs/Image`) — ROI 32×32 вокруг каждого маркера.
+  `~/visualization` (`sensor_msgs/Image`) — либо ROI 32×32 вокруг каждого
+  маркера (режим по умолчанию), либо весь кадр со всеми маркерами
+  (`full_frame:=true`).
 - **CLI** `marker_cli` — читает команды со stdin и публикует их в топик
   `/quaternion_visualizer/marker_command`.
 
@@ -66,7 +68,16 @@ ros2 run insta360_geometry quaternion_visualizer --ros-args \
 ```
 
 Параметры (значения по умолчанию): `frame_width` (1920), `roi_size` (32),
-`front_fx/fy/cx/cy` (480), `rear_fx/fy` (480), `rear_cx` (480), `rear_cy` (480).
+`full_frame` (false), `front_fx/fy/cx/cy` (480), `rear_fx/fy` (480),
+`rear_cx` (480), `rear_cy` (480).
+
+Режим вывода задаётся параметром `full_frame`:
+
+- `full_frame:=false` (по умолчанию) — публикуется ROI 32×32 вокруг каждого
+  маркера. Дёшево, без копирования всего кадра; путь для автоматизации.
+- `full_frame:=true` — публикуется весь кадр целиком (один раз на входное
+  изображение), все маркеры отрисованы на нём красными квадратами 5×5. Режим
+  для демонстрации и визуальной проверки.
 
 Просмотр результата:
 
