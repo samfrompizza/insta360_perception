@@ -12,8 +12,9 @@ bounding box (в системе координат корпуса камеры, 
 
 Первая итерация (MVP) — **aruco-маркеры**: детекция `cv::aruco::detectMarkers`,
 центр маркера как центр bounding box, кватернион направления через готовый
-примитив `FisheyeCamera::pixelToQuaternion`, дальность через fisheye-pose
-(`cv::fisheye::solvePnP`) по известному физическому размеру маркера.
+примитив `FisheyeCamera::pixelToQuaternion`, дальность через fisheye-→pinhole
+undistort (`cv::fisheye::undistortPoints`) + pinhole `cv::solvePnP` по известному
+физическому размеру маркера.
 
 ## 2. Контекст
 
@@ -61,7 +62,7 @@ public:
 | Архитектура | core/ros split: `insta360_cv_core` (Eigen+OpenCV, без rclcpp) + тонкий ROS-узел |
 | Система отсчёта | body frame (как в geometry); мировых координат CV не знает |
 | Направление | `FisheyeCamera::pixelToQuaternion(центр bbox)` |
-| Дальность | `cv::fisheye::solvePnP` по углам маркера и известному размеру; `distance = ‖tvec‖` |
+| Дальность | `cv::fisheye::undistortPoints` + pinhole `cv::solvePnP` по углам маркера и известному размеру; `distance = ‖tvec‖` |
 | Оценка дальности живёт | внутри `insta360_cv` (согласно §10 спеки geometry) |
 | Выход | bbox + центр + id + confidence + дальность + кватернион направления + визуализация |
 | Сообщение | кастомное `Detection.msg` / `DetectionArray.msg` (ориентация встроена в `Detection`) |
@@ -105,7 +106,7 @@ insta360_cv/
 |---|---|---|
 | `Detection` (core-структура) | результат одной детекции | Eigen (`Quaterniond`) |
 | `ArucoDetector` (core) | `detectMarkers` → углы+id → центр bbox | OpenCV aruco |
-| `MarkerPoseEstimator` (core) | fisheye solvePnP → `tvec` → дальность | OpenCV fisheye, `LensParams` |
+| `MarkerPoseEstimator` (core) | fisheye undistort + pinhole solvePnP → `tvec` → дальность | OpenCV fisheye, `LensParams` |
 | `ArucoDetectorNode` (ros) | подписка → core → публикация + оверлей | rclcpp, cv_bridge |
 
 ## 5. API ядра
@@ -209,10 +210,16 @@ geometry_msgs::msg::Quaternion toMsg(const Eigen::Quaterniond& q) {
 
 - `cv::aruco::detectMarkers` дисторсия-агностична — работает на сыром fisheye.
 - `cv::aruco::estimatePoseSingleMarkers` использует pinhole `cv::solvePnP` —
-  **неприменим**. Вместо него `cv::fisheye::solvePnP`.
-- Интринсики fisheye: `K = [f, 0, cx; 0, f, cy; 0, 0, 1]`, коэффициенты
-  дисторсии — **нули** (OpenCV fisheye с `k=0` даёт `r = f·θ`, совпадает с
-  нашей `EquidistantModel`).
+  **неприменим**. Равно как и `cv::fisheye::solvePnP`: в OpenCV 4.5.4 (идёт с
+  ROS2 Humble) этой функции **нет** — она появилась только в OpenCV 4.9.
+- Поэтому дальность оценивается двухшагово:
+  1. `cv::fisheye::undistortPoints` переводит equidistant-пиксели маркера
+     (r = f·θ) в pinhole-пиксели (r = f·tanθ);
+  2. pinhole `cv::solvePnP` по этим точкам восстанавливает `tvec`.
+  Это математически эквивалентно `cv::fisheye::solvePnP` из новых версий.
+- Интринсики: `K = [f, 0, cx; 0, f, cy; 0, 0, 1]`. Коэффициенты дисторсии —
+  **нули**: у fisheye `D` из 4 нулей (k=0 даёт `r = f·θ`, совпадает с нашей
+  `EquidistantModel`), у pinhole `D` из 5 нулей.
 - Углы маркера переводятся в локальные координаты линзы (центр 480,480):
   front `(x−480, y−480)`, rear `(x−960−480, y−480)`.
 - Объектные точки — маркер в плоскости XY, углы `±marker_length/2` (конвенция aruco).
