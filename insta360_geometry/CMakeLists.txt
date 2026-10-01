@@ -19,6 +19,9 @@ add_library(insta360_geometry_core
   src/equidistant_model.cpp
   src/fisheye_camera.cpp
 )
+# Consumed by downstream shared libraries (insta360_cv_core), which require
+# position-independent code from statically linked dependencies.
+set_target_properties(insta360_geometry_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(insta360_geometry_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
