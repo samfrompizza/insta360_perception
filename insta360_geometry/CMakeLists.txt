@@ -80,6 +80,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_fisheye_camera insta360_geometry_core)
   ament_add_gtest(test_equirectangular_camera test/test_equirectangular_camera.cpp)
   target_link_libraries(test_equirectangular_camera insta360_geometry_core)
+  ament_add_gtest(test_erp_convention test/test_erp_convention.cpp)
+  target_link_libraries(test_erp_convention insta360_geometry_core)
 endif()
 
 ament_export_include_directories(include)
