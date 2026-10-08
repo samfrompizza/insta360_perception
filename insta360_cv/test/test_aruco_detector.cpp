@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <functional>
 #include <memory>
 
@@ -86,6 +87,35 @@ TEST_F(ArucoDetectorTest, EmptyFrameYieldsNoDetections)
   const cv::Mat frame = cv::Mat::zeros(960, 1920, CV_8UC3);
   const auto detections = detector_.detect(frame);
   EXPECT_TRUE(detections.empty());
+}
+
+// Drives the rear-half path end to end: selector -> rear estimator -> offset.
+// A marker mirrored into the right half must recover the same distance as its
+// front-half twin, proving the rear wiring (offset and estimator order) is
+// applied through ArucoDetector, not just in MarkerPoseEstimator isolation.
+TEST_F(ArucoDetectorTest, DetectsSingleMarkerInRearLens)
+{
+  const cv::Mat front_frame = makeFrameWithMarker(5, cv::Point(480, 480), 200);
+  const auto front_detections = detector_.detect(front_frame);
+  ASSERT_EQ(front_detections.size(), 1u);
+  ASSERT_TRUE(std::isfinite(front_detections[0].distance_m));
+
+  const cv::Mat rear_frame = makeFrameWithMarker(5, cv::Point(1440, 480), 200);
+  const auto detections = detector_.detect(rear_frame);
+
+  ASSERT_EQ(detections.size(), 1u);
+  const auto & d = detections[0];
+  EXPECT_EQ(d.class_id, 5u);
+  EXPECT_NEAR(d.center.x, 1440.0, 30.0);
+  EXPECT_NEAR(d.center.y, 480.0, 30.0);
+  EXPECT_NEAR(d.orientation.norm(), 1.0, 1e-6);
+
+  // Distance must be finite and match the front-half twin: the two lenses use
+  // identical intrinsics, so the only difference is the rear offset that the
+  // selector + rear estimator are supposed to cancel.
+  ASSERT_TRUE(std::isfinite(d.distance_m));
+  EXPECT_GT(d.distance_m, 0.0);
+  EXPECT_NEAR(d.distance_m, front_detections[0].distance_m, 0.01);
 }
 
 }  // namespace
