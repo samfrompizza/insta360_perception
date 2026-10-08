@@ -7,6 +7,7 @@
 #include <Eigen/Geometry>
 #include <opencv2/core/types.hpp>
 
+#include "insta360_geometry/camera_model.hpp"
 #include "insta360_geometry/fisheye_model.hpp"
 #include "insta360_geometry/lens_params.hpp"
 
@@ -18,7 +19,7 @@ namespace insta360_geometry
 ///
 /// Body frame: X along the lens axis (front lens -> +X, rear lens -> -X),
 /// Y and Z perpendicular, right-handed.
-class FisheyeCamera
+class FisheyeCamera : public CameraModel
 {
 public:
   FisheyeCamera(
@@ -26,10 +27,12 @@ public:
     std::unique_ptr<const FisheyeModel> model);
 
   /// Pixel -> rotation quaternion (A1): rotates +X body onto the ray direction.
-  std::optional<Eigen::Quaterniond> pixelToQuaternion(const cv::Point2d & pixel) const;
+  std::optional<Eigen::Quaterniond> pixelToQuaternion(
+    const cv::Point2d & pixel) const override;
 
   /// Rotation quaternion -> pixel.
-  std::optional<cv::Point2d> quaternionToPixel(const Eigen::Quaterniond & q) const;
+  std::optional<cv::Point2d> quaternionToPixel(
+    const Eigen::Quaterniond & q) const override;
 
 private:
   LensParams front_;
