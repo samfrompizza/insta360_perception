@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <memory>
 
 #include <opencv2/aruco.hpp>
@@ -9,6 +10,7 @@
 #include <insta360_geometry/fisheye_camera.hpp>
 
 #include "insta360_cv/aruco_detector.hpp"
+#include "insta360_cv/marker_pose_estimator.hpp"
 
 using insta360_cv::ArucoDetector;
 
@@ -23,8 +25,15 @@ protected:
   ArucoDetectorTest()
   : camera_(kLens, kLens, kFrameWidth,
       std::make_unique<insta360_geometry::EquidistantModel>()),
-    detector_(cv::aruco::DICT_6X6_250, kMarkerLength, kFrameWidth,
-      kLens, kLens, camera_)
+    front_estimator_(kLens),
+    rear_estimator_(kLens),
+    detector_(
+      cv::aruco::DICT_6X6_250, kMarkerLength, camera_,
+      std::vector<const insta360_cv::PoseEstimator *>{
+        &front_estimator_, &rear_estimator_},
+      [](const cv::Point2d & c) {
+        return c.x < kFrameWidth / 2.0 ? std::size_t{0} : std::size_t{1};
+      })
   {
   }
 
@@ -48,6 +57,8 @@ protected:
   static constexpr double kMarkerLength = 0.15;
 
   insta360_geometry::FisheyeCamera camera_;
+  insta360_cv::MarkerPoseEstimator front_estimator_;
+  insta360_cv::MarkerPoseEstimator rear_estimator_;
   ArucoDetector detector_;
 };
 

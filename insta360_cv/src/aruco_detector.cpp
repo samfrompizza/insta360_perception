@@ -12,21 +12,22 @@ namespace insta360_cv
 ArucoDetector::ArucoDetector(
   int dictionary_id,
   double marker_length_m,
-  int frame_width,
-  insta360_geometry::LensParams front,
-  insta360_geometry::LensParams rear,
-  const insta360_geometry::FisheyeCamera & camera)
+  const insta360_geometry::CameraModel & camera,
+  std::vector<const PoseEstimator *> estimators,
+  std::function<std::size_t(const cv::Point2d &)> estimator_selector)
 : marker_length_m_(marker_length_m),
-  frame_width_(frame_width),
-  front_estimator_(front),
-  rear_estimator_(rear),
-  camera_(&camera)
+  camera_(&camera),
+  estimators_(std::move(estimators)),
+  estimator_selector_(std::move(estimator_selector))
 {
   if (marker_length_m <= 0.0) {
     throw std::invalid_argument("marker_length_m must be > 0");
   }
-  if (frame_width <= 0) {
-    throw std::invalid_argument("frame_width must be > 0");
+  if (estimators_.empty()) {
+    throw std::invalid_argument("at least one pose estimator is required");
+  }
+  if (!estimator_selector_) {
+    throw std::invalid_argument("estimator_selector must be set");
   }
   try {
     dictionary_ = cv::aruco::getPredefinedDictionary(
@@ -53,18 +54,9 @@ std::vector<Detection> ArucoDetector::detect(const cv::Mat & frame_bgr) const
     const cv::Point2d center(
       bbox.x + bbox.width / 2.0, bbox.y + bbox.height / 2.0);
 
-    const bool is_front = center.x < frame_width_ / 2.0;
-    const double offset_x = is_front ? 0.0 : frame_width_ / 2.0;
-
-    std::vector<cv::Point2f> corners_local(4);
-    for (std::size_t k = 0; k < 4; ++k) {
-      corners_local[k] = cv::Point2f(
-        static_cast<float>(corners[i][k].x - offset_x), corners[i][k].y);
-    }
-
     const auto orientation = camera_->pixelToQuaternion(center);
     if (!orientation) {
-      continue;  // marker center outside fisheye FOV — skip
+      continue;  // center outside the camera's valid region — skip
     }
 
     Detection d;
@@ -75,9 +67,12 @@ std::vector<Detection> ArucoDetector::detect(const cv::Mat & frame_bgr) const
     d.size_y = bbox.height;
     d.orientation = *orientation;
 
-    const MarkerPoseEstimator & estimator =
-      is_front ? front_estimator_ : rear_estimator_;
-    const auto distance = estimator.estimateDistance(corners_local, marker_length_m_);
+    const std::size_t idx = estimator_selector_(center);
+    if (idx >= estimators_.size()) {
+      continue;
+    }
+    const auto distance =
+      estimators_[idx]->estimateDistance(corners[i], marker_length_m_);
     d.distance_m = distance ? *distance :
       std::numeric_limits<double>::quiet_NaN();
 

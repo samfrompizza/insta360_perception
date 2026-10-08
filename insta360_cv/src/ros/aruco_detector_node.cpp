@@ -16,6 +16,7 @@
 
 #include "insta360_cv/aruco_detector.hpp"
 #include "insta360_cv/detection.hpp"
+#include "insta360_cv/marker_pose_estimator.hpp"
 #include "insta360_cv/msg/detection.hpp"
 #include "insta360_cv/msg/detection_array.hpp"
 
@@ -63,8 +64,15 @@ public:
       front, rear, frame_width,
       std::make_unique<insta360_geometry::EquidistantModel>());
 
+    front_estimator_ = std::make_unique<MarkerPoseEstimator>(front);
+    rear_estimator_ = std::make_unique<MarkerPoseEstimator>(rear);
+    const double half = frame_width / 2.0;
     detector_ = std::make_unique<ArucoDetector>(
-      dictionary, marker_length, frame_width, front, rear, *camera_);
+      dictionary, marker_length, *camera_,
+      std::vector<const PoseEstimator *>{front_estimator_.get(), rear_estimator_.get()},
+      [half](const cv::Point2d & c) {
+        return c.x < half ? std::size_t{0} : std::size_t{1};
+      });
 
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
       "/dual_fisheye/image", rclcpp::SensorDataQoS(),
@@ -134,6 +142,8 @@ private:
   }
 
   std::unique_ptr<insta360_geometry::FisheyeCamera> camera_;
+  std::unique_ptr<MarkerPoseEstimator> front_estimator_;
+  std::unique_ptr<MarkerPoseEstimator> rear_estimator_;
   std::unique_ptr<ArucoDetector> detector_;
   bool draw_overlay_ = true;
 
