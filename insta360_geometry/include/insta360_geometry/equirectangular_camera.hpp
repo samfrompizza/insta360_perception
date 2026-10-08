@@ -30,6 +30,9 @@ public:
   std::optional<cv::Point2d> quaternionToPixel(
     const Eigen::Quaterniond & q) const override;
 
+  int width() const { return width_; }
+  int height() const { return height_; }
+
 private:
   int width_;
   int height_;

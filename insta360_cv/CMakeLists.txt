@@ -28,6 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 add_library(insta360_cv_core
   src/aruco_detector.cpp
   src/marker_pose_estimator.cpp
+  src/erp_pose_estimator.cpp
 )
 target_include_directories(insta360_cv_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -70,6 +71,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_pose_range insta360_cv_core)
   ament_add_gtest(test_aruco_detector test/test_aruco_detector.cpp)
   target_link_libraries(test_aruco_detector insta360_cv_core)
+  ament_add_gtest(test_erp_pose test/test_erp_pose.cpp)
+  target_link_libraries(test_erp_pose insta360_cv_core)
 endif()
 
 ament_export_include_directories(include)
