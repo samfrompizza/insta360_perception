@@ -84,8 +84,10 @@ TEST(ErpPoseEstimator, RecoversDistanceFromOffAxisMarker)
 {
   const double marker_length = 0.15;
   const double true_distance = 2.0;
-  // Center ray at nonzero latitude/longitude, so cos(lat) != 1 and the
-  // latitude-dependent focal length is exercised.
+  // Center ray at nonzero latitude/longitude: exercises the off-axis
+  // right/up/forward basis and mean-of-rays center_dir path for a non-+X
+  // center. Does not validate the latitude-dependent focal length — f_local
+  // cancels out of solvePnP, so distance is invariant to the latitude axis.
   const Eigen::Vector3d center = bodyRay(M_PI / 6.0, M_PI / 4.0);
   const auto corners = projectMarkerAt(center, marker_length, true_distance);
   ASSERT_EQ(corners.size(), 4u);
