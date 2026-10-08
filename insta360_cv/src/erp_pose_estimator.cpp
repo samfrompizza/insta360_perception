@@ -55,7 +55,8 @@ std::optional<double> ErpPoseEstimator::estimateDistance(
   const Eigen::Vector3d up = right.cross(forward).normalized();
 
   // ERP angular resolution at the marker latitude: pixels per radian.
-  const double lat = std::asin(std::clamp(forward.y(), -1.0, 1.0));
+  // ray_body.z = -sin(lat) under the ERP->body mapping, so lat = asin(-z).
+  const double lat = std::asin(std::clamp(-forward.z(), -1.0, 1.0));
   const double f_local = (camera_->width() / (2.0 * M_PI)) * std::cos(lat);
   if (f_local <= 1e-6) {
     return std::nullopt;
