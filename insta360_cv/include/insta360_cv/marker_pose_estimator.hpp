@@ -8,17 +8,19 @@
 
 #include <insta360_geometry/lens_params.hpp>
 
+#include "insta360_cv/pose_estimator.hpp"
+
 namespace insta360_cv
 {
 
-class MarkerPoseEstimator
+class MarkerPoseEstimator : public PoseEstimator
 {
 public:
   explicit MarkerPoseEstimator(insta360_geometry::LensParams lens);
 
   std::optional<double> estimateDistance(
     const std::vector<cv::Point2f> & corners_local,
-    double marker_length_m) const;
+    double marker_length_m) const override;
 
 private:
   insta360_geometry::LensParams lens_;
