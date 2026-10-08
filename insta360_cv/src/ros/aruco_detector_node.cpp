@@ -19,6 +19,7 @@
 
 #include "insta360_cv/aruco_detector.hpp"
 #include "insta360_cv/detection.hpp"
+#include "insta360_cv/erp_margin.hpp"
 #include "insta360_cv/erp_pose_estimator.hpp"
 #include "insta360_cv/marker_pose_estimator.hpp"
 #include "insta360_cv/msg/detection.hpp"
@@ -126,16 +127,12 @@ private:
 
     std::vector<Detection> detections = detector_->detect(cv_ptr->image);
     if (erp_camera_) {
-      const double w = erp_camera_->width();
-      const double h = erp_camera_->height();
       detections.erase(
         std::remove_if(detections.begin(), detections.end(),
           [&](const Detection & d) {
-            const bool near_seam =
-              d.center.x < seam_margin_px_ || d.center.x > w - seam_margin_px_;
-            const bool near_pole =
-              d.center.y < pole_margin_px_ || d.center.y > h - pole_margin_px_;
-            return near_seam || near_pole;
+            return isInErpMarginBand(
+              d.center, erp_camera_->width(), erp_camera_->height(),
+              seam_margin_px_, pole_margin_px_);
           }),
         detections.end());
     }

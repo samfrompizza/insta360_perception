@@ -28,10 +28,12 @@ Eigen::Vector3d bodyRay(double lat, double lon)
 
 // Project a square marker of side `marker_length` at `distance_m` along body
 // direction `center` into ERP pixels. The marker plane is perpendicular to
-// `center` (facing the camera). Corner order is TL,TR,BR,BL in the marker's
-// own (right, up) plane, matching the estimator's object_points.
+// `center` (facing the camera) unless `tilt` rotates its (right, up) basis away
+// from fronto-parallel. Corner order is TL,TR,BR,BL in the marker's own
+// (right, up) plane, matching the estimator's object_points.
 std::vector<cv::Point2f> projectMarkerAt(
-  const Eigen::Vector3d & center, double marker_length, double distance_m)
+  const Eigen::Vector3d & center, double marker_length, double distance_m,
+  const Eigen::Quaterniond & tilt = Eigen::Quaterniond::Identity())
 {
   const double m = marker_length / 2.0;
 
@@ -43,10 +45,14 @@ std::vector<cv::Point2f> projectMarkerAt(
   const Eigen::Vector3d right = forward.cross(up_ref).normalized();
   const Eigen::Vector3d up = right.cross(forward).normalized();
 
+  const Eigen::Matrix3d r = tilt.toRotationMatrix();
+  const Eigen::Vector3d right_t = r * right;
+  const Eigen::Vector3d up_t = r * up;
+
   const Eigen::Vector3d origin = forward * distance_m;
   const Eigen::Vector3d corners_body[4] = {
-    origin - m * right + m * up, origin + m * right + m * up,
-    origin + m * right - m * up, origin - m * right - m * up};
+    origin - m * right_t + m * up_t, origin + m * right_t + m * up_t,
+    origin + m * right_t - m * up_t, origin - m * right_t - m * up_t};
 
   EquirectangularCamera cam(kW, kH);
   std::vector<cv::Point2f> out;
@@ -108,4 +114,47 @@ TEST(ErpPoseEstimator, ReturnsNulloptOnDegenerateCorners)
   EquirectangularCamera cam(kW, kH);
   ErpPoseEstimator estimator(cam);
   EXPECT_FALSE(estimator.estimateDistance(degenerate, 0.15).has_value());
+}
+
+TEST(ErpPoseEstimator, RecoversDistanceFromTiltedMarkerAtHighLatitude)
+{
+  const double marker_length = 0.15;
+  const double true_distance = 2.0;
+  // Tilt the marker plane around the body +Y axis so its corners sit at
+  // different depths instead of facing the camera head-on; place it at 60 deg
+  // latitude so the ERP angular resolution differs from the equator.
+  const Eigen::Vector3d center = bodyRay(M_PI / 3.0, 0.0);
+  const Eigen::Quaterniond tilt(
+    Eigen::AngleAxisd(0.7, Eigen::Vector3d::UnitY()));
+  const auto corners =
+    projectMarkerAt(center, marker_length, true_distance, tilt);
+  ASSERT_EQ(corners.size(), 4u);
+
+  EquirectangularCamera cam(kW, kH);
+  ErpPoseEstimator estimator(cam);
+  const auto distance = estimator.estimateDistance(corners, marker_length);
+
+  ASSERT_TRUE(distance.has_value());
+  EXPECT_NEAR(*distance, true_distance, true_distance * 0.10);
+}
+
+TEST(ErpPoseEstimator, RecoversDistanceFromMarkerAtBodyYPole)
+{
+  // A marker on the body +Y axis lands at the ERP equator (lat == 0) at the
+  // left edge (x == W/4). It pins the latitude axis: the correct axis
+  // (lat = asin(-z)) reads latitude 0 and estimates the distance, while a
+  // reverted axis (lat = asin(y)) reads |lat| = pi/2, trips the f_local <= 1e-6
+  // pole guard, and returns nullopt.
+  const double marker_length = 0.15;
+  const double true_distance = 2.0;
+  const Eigen::Vector3d center = Eigen::Vector3d::UnitY();
+  const auto corners = projectMarkerAt(center, marker_length, true_distance);
+  ASSERT_EQ(corners.size(), 4u);
+
+  EquirectangularCamera cam(kW, kH);
+  ErpPoseEstimator estimator(cam);
+  const auto distance = estimator.estimateDistance(corners, marker_length);
+
+  ASSERT_TRUE(distance.has_value());
+  EXPECT_NEAR(*distance, true_distance, true_distance * 0.10);
 }

@@ -73,6 +73,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_aruco_detector insta360_cv_core)
   ament_add_gtest(test_erp_pose test/test_erp_pose.cpp)
   target_link_libraries(test_erp_pose insta360_cv_core)
+  ament_add_gtest(test_erp_margin test/test_erp_margin.cpp)
+  target_link_libraries(test_erp_margin insta360_cv_core)
 endif()
 
 ament_export_include_directories(include)
