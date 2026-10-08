@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -12,10 +14,12 @@
 #include <geometry_msgs/msg/quaternion.hpp>
 
 #include <insta360_geometry/equidistant_model.hpp>
+#include <insta360_geometry/equirectangular_camera.hpp>
 #include <insta360_geometry/fisheye_camera.hpp>
 
 #include "insta360_cv/aruco_detector.hpp"
 #include "insta360_cv/detection.hpp"
+#include "insta360_cv/erp_pose_estimator.hpp"
 #include "insta360_cv/marker_pose_estimator.hpp"
 #include "insta360_cv/msg/detection.hpp"
 #include "insta360_cv/msg/detection_array.hpp"
@@ -44,40 +48,64 @@ public:
   ArucoDetectorNode()
   : Node("aruco_detector")
   {
-    const int frame_width = declare_parameter("frame_width", 1920);
+    const std::string mode = declare_parameter("mode", std::string("erp"));
     const double marker_length = declare_parameter("marker_length", 0.15);
     const int dictionary = declare_parameter("dictionary", 9);
     draw_overlay_ = declare_parameter("draw_overlay", true);
 
-    const insta360_geometry::LensParams front{
-      declare_parameter("front_fx", 480.0),
-      declare_parameter("front_fy", 480.0),
-      declare_parameter("front_cx", 480.0),
-      declare_parameter("front_cy", 480.0)};
-    const insta360_geometry::LensParams rear{
-      declare_parameter("rear_fx", 480.0),
-      declare_parameter("rear_fy", 480.0),
-      declare_parameter("rear_cx", 480.0),
-      declare_parameter("rear_cy", 480.0)};
+    if (mode == "erp") {
+      const int erp_width = declare_parameter("erp_width", 1920);
+      const int erp_height = declare_parameter("erp_height", 960);
+      seam_margin_px_ = declare_parameter("erp_seam_margin_px", 0);
+      pole_margin_px_ = declare_parameter("erp_pole_margin_px", 0);
 
-    camera_ = std::make_unique<insta360_geometry::FisheyeCamera>(
-      front, rear, frame_width,
-      std::make_unique<insta360_geometry::EquidistantModel>());
+      auto camera = std::make_unique<insta360_geometry::EquirectangularCamera>(
+        erp_width, erp_height);
+      auto estimator = std::make_unique<ErpPoseEstimator>(*camera);
+      detector_ = std::make_unique<ArucoDetector>(
+        dictionary, marker_length, *camera,
+        std::vector<const PoseEstimator *>{estimator.get()},
+        [](const cv::Point2d &) { return std::size_t{0}; });
+      erp_camera_ = std::move(camera);
+      erp_estimator_ = std::move(estimator);
+      image_sub_ = create_subscription<sensor_msgs::msg::Image>(
+        "/equirectangular/image", rclcpp::SensorDataQoS(),
+        [this](const sensor_msgs::msg::Image::SharedPtr msg) { onImage(msg); });
+    } else if (mode == "fisheye") {
+      const int frame_width = declare_parameter("frame_width", 1920);
+      const insta360_geometry::LensParams front{
+        declare_parameter("front_fx", 480.0),
+        declare_parameter("front_fy", 480.0),
+        declare_parameter("front_cx", 480.0),
+        declare_parameter("front_cy", 480.0)};
+      const insta360_geometry::LensParams rear{
+        declare_parameter("rear_fx", 480.0),
+        declare_parameter("rear_fy", 480.0),
+        declare_parameter("rear_cx", 480.0),
+        declare_parameter("rear_cy", 480.0)};
 
-    front_estimator_ = std::make_unique<MarkerPoseEstimator>(front);
-    rear_estimator_ = std::make_unique<MarkerPoseEstimator>(
-      rear, frame_width / 2.0);
-    const double half = frame_width / 2.0;
-    detector_ = std::make_unique<ArucoDetector>(
-      dictionary, marker_length, *camera_,
-      std::vector<const PoseEstimator *>{front_estimator_.get(), rear_estimator_.get()},
-      [half](const cv::Point2d & c) {
-        return c.x < half ? std::size_t{0} : std::size_t{1};
-      });
-
-    image_sub_ = create_subscription<sensor_msgs::msg::Image>(
-      "/dual_fisheye/image", rclcpp::SensorDataQoS(),
-      [this](const sensor_msgs::msg::Image::SharedPtr msg) { onImage(msg); });
+      auto camera = std::make_unique<insta360_geometry::FisheyeCamera>(
+        front, rear, frame_width,
+        std::make_unique<insta360_geometry::EquidistantModel>());
+      auto front_est = std::make_unique<MarkerPoseEstimator>(front);
+      auto rear_est = std::make_unique<MarkerPoseEstimator>(
+        rear, frame_width / 2.0);
+      const double half = frame_width / 2.0;
+      detector_ = std::make_unique<ArucoDetector>(
+        dictionary, marker_length, *camera,
+        std::vector<const PoseEstimator *>{front_est.get(), rear_est.get()},
+        [half](const cv::Point2d & c) {
+          return c.x < half ? std::size_t{0} : std::size_t{1};
+        });
+      fisheye_camera_ = std::move(camera);
+      front_estimator_ = std::move(front_est);
+      rear_estimator_ = std::move(rear_est);
+      image_sub_ = create_subscription<sensor_msgs::msg::Image>(
+        "/dual_fisheye/image", rclcpp::SensorDataQoS(),
+        [this](const sensor_msgs::msg::Image::SharedPtr msg) { onImage(msg); });
+    } else {
+      throw std::invalid_argument("mode must be 'erp' or 'fisheye'");
+    }
 
     detections_pub_ = create_publisher<insta360_cv::msg::DetectionArray>(
       "~/detections", 10);
@@ -96,7 +124,21 @@ private:
       return;
     }
 
-    const std::vector<Detection> detections = detector_->detect(cv_ptr->image);
+    std::vector<Detection> detections = detector_->detect(cv_ptr->image);
+    if (erp_camera_) {
+      const double w = erp_camera_->width();
+      const double h = erp_camera_->height();
+      detections.erase(
+        std::remove_if(detections.begin(), detections.end(),
+          [&](const Detection & d) {
+            const bool near_seam =
+              d.center.x < seam_margin_px_ || d.center.x > w - seam_margin_px_;
+            const bool near_pole =
+              d.center.y < pole_margin_px_ || d.center.y > h - pole_margin_px_;
+            return near_seam || near_pole;
+          }),
+        detections.end());
+    }
 
     insta360_cv::msg::DetectionArray array_msg;
     array_msg.header = msg->header;
@@ -142,11 +184,15 @@ private:
     }
   }
 
-  std::unique_ptr<insta360_geometry::FisheyeCamera> camera_;
+  std::unique_ptr<insta360_geometry::EquirectangularCamera> erp_camera_;
+  std::unique_ptr<ErpPoseEstimator> erp_estimator_;
+  std::unique_ptr<insta360_geometry::FisheyeCamera> fisheye_camera_;
   std::unique_ptr<MarkerPoseEstimator> front_estimator_;
   std::unique_ptr<MarkerPoseEstimator> rear_estimator_;
   std::unique_ptr<ArucoDetector> detector_;
   bool draw_overlay_ = true;
+  int seam_margin_px_ = 0;
+  int pole_margin_px_ = 0;
 
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
   rclcpp::Publisher<insta360_cv::msg::DetectionArray>::SharedPtr detections_pub_;
