@@ -18,6 +18,7 @@ find_package(OpenCV REQUIRED)
 add_library(insta360_geometry_core
   src/equidistant_model.cpp
   src/fisheye_camera.cpp
+  src/equirectangular_camera.cpp
 )
 # Consumed by downstream shared libraries (insta360_cv_core), which require
 # position-independent code from statically linked dependencies.
@@ -77,6 +78,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_equidistant_model insta360_geometry_core)
   ament_add_gtest(test_fisheye_camera test/test_fisheye_camera.cpp)
   target_link_libraries(test_fisheye_camera insta360_geometry_core)
+  ament_add_gtest(test_equirectangular_camera test/test_equirectangular_camera.cpp)
+  target_link_libraries(test_equirectangular_camera insta360_geometry_core)
 endif()
 
 ament_export_include_directories(include)
