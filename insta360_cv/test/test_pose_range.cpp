@@ -64,3 +64,25 @@ TEST(MarkerPoseEstimatorTest, ReturnsNulloptOnDegenerateCorners)
 
   EXPECT_FALSE(distance.has_value());
 }
+
+// A rear lens's corners live in the right half of a dual-fisheye frame, offset
+// by frame_width/2 in x. The estimator must subtract `frame_offset_x` so the
+// recovered distance matches the unshifted (front-lens) case.
+TEST(MarkerPoseEstimatorTest, AppliesFrameOffsetToShiftedCorners)
+{
+  const double marker_length = 0.15;
+  const double true_distance = 2.0;
+  const double frame_offset_x = 960.0;
+
+  const auto unshifted = projectMarker(marker_length, true_distance);
+  std::vector<cv::Point2f> shifted = unshifted;
+  for (cv::Point2f & c : shifted) {
+    c.x += static_cast<float>(frame_offset_x);
+  }
+
+  MarkerPoseEstimator estimator(kLens, frame_offset_x);
+  const auto distance = estimator.estimateDistance(shifted, marker_length);
+
+  ASSERT_TRUE(distance.has_value());
+  EXPECT_NEAR(*distance, true_distance, true_distance * 0.05);
+}

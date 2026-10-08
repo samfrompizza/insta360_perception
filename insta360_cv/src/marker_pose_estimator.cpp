@@ -6,8 +6,10 @@
 namespace insta360_cv
 {
 
-MarkerPoseEstimator::MarkerPoseEstimator(insta360_geometry::LensParams lens)
-: lens_(lens)
+MarkerPoseEstimator::MarkerPoseEstimator(
+  insta360_geometry::LensParams lens, double frame_offset_x)
+: lens_(lens),
+  frame_offset_x_(frame_offset_x)
 {
 }
 
@@ -19,8 +21,14 @@ std::optional<double> MarkerPoseEstimator::estimateDistance(
     return std::nullopt;
   }
 
+  // Normalize full-frame pixels of a rear lens into its half-frame coordinates.
+  std::vector<cv::Point2f> corners(corners_local);
+  for (cv::Point2f & c : corners) {
+    c.x -= static_cast<float>(frame_offset_x_);
+  }
+
   // Degenerate corners (zero projected area) cannot constrain a pose.
-  if (cv::contourArea(corners_local) <= 0.0) {
+  if (cv::contourArea(corners) <= 0.0) {
     return std::nullopt;
   }
 
@@ -45,7 +53,7 @@ std::optional<double> MarkerPoseEstimator::estimateDistance(
   cv::Mat tvec;
   try {
     cv::fisheye::undistortPoints(
-      corners_local, undistorted, K, D_fisheye, cv::noArray(), K);
+      corners, undistorted, K, D_fisheye, cv::noArray(), K);
     cv::solvePnP(object_points, undistorted, K, D_pinhole, rvec, tvec);
   } catch (const cv::Exception &) {
     return std::nullopt;

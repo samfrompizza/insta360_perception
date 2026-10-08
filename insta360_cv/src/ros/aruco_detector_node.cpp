@@ -65,7 +65,8 @@ public:
       std::make_unique<insta360_geometry::EquidistantModel>());
 
     front_estimator_ = std::make_unique<MarkerPoseEstimator>(front);
-    rear_estimator_ = std::make_unique<MarkerPoseEstimator>(rear);
+    rear_estimator_ = std::make_unique<MarkerPoseEstimator>(
+      rear, frame_width / 2.0);
     const double half = frame_width / 2.0;
     detector_ = std::make_unique<ArucoDetector>(
       dictionary, marker_length, *camera_,

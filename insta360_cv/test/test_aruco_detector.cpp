@@ -26,7 +26,7 @@ protected:
   : camera_(kLens, kLens, kFrameWidth,
       std::make_unique<insta360_geometry::EquidistantModel>()),
     front_estimator_(kLens),
-    rear_estimator_(kLens),
+    rear_estimator_(kLens, kFrameWidth / 2.0),
     detector_(
       cv::aruco::DICT_6X6_250, kMarkerLength, camera_,
       std::vector<const insta360_cv::PoseEstimator *>{
